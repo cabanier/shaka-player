@@ -1,0 +1,176 @@
+
+<!-- saved from url=(0073)https://widevinedrm.herokuapp.com/l1_software_secure_decode_required.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+<!--     <script src="./index_files/shaka-player.compiled.js"></script> -->
+
+<script src="./node_modules/google-closure-library/closure/goog/base.js"></script>
+<script src="./dist/deps.js"></script>
+<script src="./shaka-player.uncompiled.js"></script>
+  </head>
+  <body>
+  <button id="xr-button" disabled>XR not found</button>
+   <video id="video" width="640" controls="" src="blob:https://widevinedrm.herokuapp.com/1176f224-c2a7-4112-8ae9-cd90330c2cc1"></video>
+    <script>
+      (function () {
+      'use strict';
+
+      // XR globals.
+      let xrButton = document.getElementById('xr-button');
+      let xrSession = null;
+      let xrRefSpace = null;
+      let xrMediaFactory = null;
+      let cylinder_layer = false;
+
+      let videoelem = /*document.createElement('video');*/document.getElementById('video');
+      //video.loop = false;
+      //video.crossOrigin = "anonymous";
+      //video.preload = 'auto';
+      //video.autoload = true;
+      //videoelem.width=640;
+      //videoelem.src = "https://widevinedrm.herokuapp.com/1176f224-c2a7-4112-8ae9-cd90330c2cc1";
+
+      function initApp(manifestUri, licenseServer) {
+        // Install built-in polyfills to patch browser incompatibilities.
+        shaka.polyfill.installAll();
+
+        // Check to see if the browser supports the basic APIs Shaka needs.
+        if (shaka.Player.isBrowserSupported()) {
+          // Everything looks good!
+          initPlayer(manifestUri, licenseServer);
+        } else {
+          // This browser does not have the minimum set of APIs we need.
+          console.error('Browser not supported!');
+        }
+      }
+
+      async function initPlayer(manifestUri, licenseServer) {
+        // Create a Player instance.
+        const video = videoelem;
+        const player = new shaka.Player(video);
+        player.configure({
+          drm: {
+            servers: {
+              'com.widevine.alpha': licenseServer
+            },
+            /*
+            advanced: {
+              'com.widevine.alpha': {
+                'videoRobustness': 'HW_SECURE_DECODE'
+              }
+            }
+            */
+          }
+        });
+
+        // Attach player to the window to make it easy to access in the JS console.
+        window.player = player;
+
+        // Listen for error events.
+        player.addEventListener('error', onErrorEvent);
+
+        // Try to load a manifest.
+        // This is an asynchronous process.
+        try {
+          await player.load(manifestUri);
+          // This runs if the asynchronous load is successful.
+          console.log('The video has now been loaded!');
+        } catch (e) {
+          // onError is executed if the asynchronous load fails.
+          onError(e);
+        }
+      }
+
+      function onErrorEvent(event) {
+        // Extract the shaka.util.Error object from the event.
+        onError(event.detail);
+      }
+
+      function onError(error) {
+        // Log the error.
+        console.error('dsc Error code', error.code, 'object', error);
+      }
+
+      const manifestUri = 'https://storage.googleapis.com/wvmedia/cenc/h264/llama/llama.mpd';
+      const licenseServer = 'https://proxy.uat.widevine.com/proxy?provider=widevine_test&video_id=GTS_SW_SECURE_DECODE';
+      document.addEventListener('DOMContentLoaded', initApp.bind(null, manifestUri, licenseServer));
+
+      // Checks to see if WebXR is available and, if so, requests an XRDevice
+      // that is connected to the system and tests it to ensure it supports the
+      // desired session options.
+      function initXR() {
+        // Is WebXR available on this UA?
+        if (navigator.xr) {
+          // If the device allows creation of exclusive sessions set it as the
+          // target of the 'Enter XR' button.
+          navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+            if (supported) {
+              // Updates the button to start an XR session when clicked.
+              xrButton.addEventListener('click', onButtonClicked);
+              xrButton.disabled = false;
+              xrButton.textContent = 'Enter XR';
+            }
+          });
+        }
+      }
+
+      // Called when the user clicks the button to enter XR. If we don't have a
+      // session we'll request one, and if we do have a session we'll end it.
+      function onButtonClicked() {
+        if (!xrSession) {
+          navigator.xr.requestSession('immersive-vr', {requiredFeatures: ['layers']}).then(onSessionStarted);
+        } else {
+          xrSession.end();
+        }
+      }
+
+      // Called when we've successfully acquired a XRSession. In response we
+      // will set up the necessary session state and kick off the frame loop.
+      function onSessionStarted(session) {
+        xrSession = session;
+        xrButton.textContent = 'Exit VR';
+
+        // Listen for the sessions 'end' event so we can respond if the user
+        // or UA ends the session for any reason.
+        session.addEventListener('end', onSessionEnded);
+
+        xrMediaFactory = new XRMediaBinding(session);
+
+        session.requestReferenceSpace('local').then((refSpace) => {
+        xrRefSpace = refSpace;
+
+        let cylinder_layer = xrMediaFactory.createCylinderLayer(videoelem, {space: refSpace});
+        videoelem.remove();
+        videoelem.play();
+        // let layer = xrMediaFactory.createEquirectLayer(video, {space: refSpace});
+        session.updateRenderState({ layers: [ cylinder_layer ] });
+
+          // Inform the session that we're ready to begin drawing.
+        session.requestAnimationFrame(onXRFrame);
+        });
+      }
+
+      // Called either when the user has explicitly ended the session by calling
+      // session.end() or when the UA has ended the session for any reason.
+      // At this point the session object is no longer usable and should be
+      // discarded.
+      function onSessionEnded(event) {
+        xrSession = null;
+        videoelem.pause();
+        xrButton.textContent = 'Enter VR';
+      }
+
+      // Called every time the XRSession requests that a new frame be drawn.
+      function onXRFrame(time, frame) {
+        let session = frame.session;
+
+        // Inform the session that we're ready for the next frame.
+        session.requestAnimationFrame(onXRFrame);
+      }
+
+      // Start the XR application.
+      initXR();
+
+    })();
+    </script>
+
+</body></html>
